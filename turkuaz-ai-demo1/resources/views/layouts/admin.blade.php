@@ -19,6 +19,13 @@
         {{-- Sidebar --}}
         <nav class="admin-sidebar bg-dark p-3 flex-shrink-0">
             <div class="fs-5 fw-bold text-white mb-4">{{ config('app.name') }}</div>
+
+            <li class="nav-item">
+                <a href="/"
+                    class="nav-link ">
+                    <i class="bi bi-globe  me-2"></i> Assistant
+                </a>
+            </li>
             <ul class="nav nav-pills flex-column gap-1">
                 @foreach (config('admin_menu') as $item)
                     @if (is_null($item['permission']) || auth()->user()->hasPermission($item['permission']))

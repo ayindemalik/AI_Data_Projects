@@ -4,11 +4,13 @@ use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return view('welcome');
+    return redirect()->route('assistant.index');
 });
 
-Route::get('/dashboard', function () {
-    return view('dashboard');
+Route::get('/dashboard', function (Illuminate\Http\Request $request) {
+    return $request->user()->hasRole('administrator')
+        ? redirect()->route('admin.dashboard')
+        : redirect()->route('assistant.index');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware('auth')->group(function () {
@@ -17,12 +19,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
-require __DIR__.'/auth.php';
+require __DIR__.'/auth.php'; 
 
 require_once __DIR__.'/admin.php';
-
-// require_once __DIR__.'/assistant.php';
-
-// require_once __DIR__.'/assistant.php';
 
 require_once __DIR__.'/assistant.php';
