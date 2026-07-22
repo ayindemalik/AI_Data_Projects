@@ -6,6 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Cera · {{ config('app.name') }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    {{-- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous"> --}}
     <style>
         body { background: #f4f6f8; }
         .chat-wrap { max-width: 760px; margin: 0 auto; }
@@ -20,29 +21,39 @@
 </head>
 <body>
     <div class="container py-4 chat-wrap">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h1 class="h4 mb-0">Cera · Ürün Asistanı</h1>
-            <div>
-                @auth
-                    <span class="text-muted small">{{ auth()->user()->name }}</span>
+        <div class="card shadow-lg main-card">
+            <div class="card-header" style=" background: linear-gradient(135deg, rgb(4, 65, 95), rgb(9, 90, 130));">
+                <div class="d-flex justify-content-between align-items-center mb-3 text-white">
+                    <h1 class="h4 mb-0"> <i class="bi bi-robot"></i> Cera · Ürün Asistanı</h1>
+                    <div class="d-flex gap-2 align-items-center text-white">
+                        @auth
+                            <span class="text-muted small btn btn-success text-white">{{ auth()->user()->name }}</span>
+                        @else
+                            <a href="{{ route('login') }}" class="small text-muted small btn btn-success">Giriş yap</a>
+                        @endauth
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-body p-3 p-xl-3">
+                @if (!$assistantEnabled)
+                    <div class="alert alert-warning">Asistan şu anda devre dışı. Lütfen daha sonra tekrar deneyin.</div>
                 @else
-                    <a href="{{ route('login') }}" class="small">Giriş yap</a>
-                @endauth
+                    <div id="chat" class="chat-box mb-3">
+                        <div class="bubble assistant">Merhaba! Ben Cera 👋 Ürünlerimiz hakkında sorularınızı yanıtlayabilirim. Örneğin: "İbiza serisinde hangi lavabolar var?" ya da "Gömme rezervuar montaj kılavuzu"</div>
+                    </div>
+
+                    <form id="chat-form" class="d-flex gap-2">
+                        <input type="text" id="chat-input" class="form-control" placeholder="Sorunuzu yazın..." maxlength="1000" autocomplete="off" required>
+                        <button type="submit" id="chat-send" class="btn btn-primary">Gönder</button>
+                    </form>
+                @endif
             </div>
         </div>
 
-        @if (!$assistantEnabled)
-            <div class="alert alert-warning">Asistan şu anda devre dışı. Lütfen daha sonra tekrar deneyin.</div>
-        @else
-            <div id="chat" class="chat-box mb-3">
-                <div class="bubble assistant">Merhaba! Ben Cera 👋 Ürünlerimiz hakkında sorularınızı yanıtlayabilirim. Örneğin: "İbiza serisinde hangi lavabolar var?" ya da "Gömme rezervuar montaj kılavuzu"</div>
-            </div>
+        
 
-            <form id="chat-form" class="d-flex gap-2">
-                <input type="text" id="chat-input" class="form-control" placeholder="Sorunuzu yazın..." maxlength="1000" autocomplete="off" required>
-                <button type="submit" id="chat-send" class="btn btn-primary">Gönder</button>
-            </form>
-        @endif
+        
     </div>
 
     <script>
