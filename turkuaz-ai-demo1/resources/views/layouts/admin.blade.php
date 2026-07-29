@@ -12,6 +12,9 @@
         .admin-sidebar .nav-link.active,
         .admin-sidebar .nav-link:hover { color: #fff; background: rgba(255,255,255,.1); }
     </style>
+
+    {{-- Per-page CSS (DataTables, etc.) gets pushed here. --}}
+    @stack('styles')
 </head>
 <body class="bg-light">
 
@@ -20,13 +23,12 @@
         <nav class="admin-sidebar bg-dark p-3 flex-shrink-0">
             <div class="fs-5 fw-bold text-white mb-4">{{ config('app.name') }}</div>
 
-            <li class="nav-item">
-                <a href="/"
-                    class="nav-link ">
-                    <i class="bi bi-globe  me-2"></i> Assistant
-                </a>
-            </li>
             <ul class="nav nav-pills flex-column gap-1">
+                <li class="nav-item">
+                    <a href="/" class="nav-link">
+                        <i class="bi bi-globe me-2"></i> Assistant
+                    </a>
+                </li>
                 @foreach (config('admin_menu') as $item)
                     @if (is_null($item['permission']) || auth()->user()->hasPermission($item['permission']))
                         <li class="nav-item">
@@ -74,5 +76,8 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    {{-- Per-page JS (jQuery, DataTables, etc.) gets pushed here, after Bootstrap. --}}
+    @stack('scripts')
 </body>
 </html>

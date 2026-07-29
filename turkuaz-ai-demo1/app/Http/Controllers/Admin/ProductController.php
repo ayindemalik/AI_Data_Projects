@@ -10,6 +10,7 @@ use App\Models\Color;
 use App\Models\Measure;
 use App\Models\Product;
 use App\Models\ProductImage;
+use App\Models\ProductType;
 use App\Models\Series;
 use App\Models\Subcategory;
 use Illuminate\Http\RedirectResponse;
@@ -25,26 +26,34 @@ class ProductController extends Controller
         $this->authorize('viewAny', Product::class);
 
         $showTrashed = $request->boolean('trashed');
-        $term = $request->string('q')->toString();
 
         $products = Product::query()
-            ->with(['category', 'subcategory', 'series'])
+            ->with(['images', 'category', 'subcategory', 'productType', 'series', 'color'])
             ->when($showTrashed, fn ($q) => $q->onlyTrashed())
-            ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->integer('category_id')))
-            ->when($term, function ($q) use ($term) {
-                $q->where(function ($inner) use ($term) {
-                    $inner->whereRaw("JSON_EXTRACT(name, '$.tr') LIKE ?", ["%{$term}%"])
-                          ->orWhereRaw("JSON_EXTRACT(name, '$.en') LIKE ?", ["%{$term}%"])
-                          ->orWhere('sku', 'like', "%{$term}%");
-                });
-            })
+            // Data-quality shortcuts linked from the dashboard's "Products Needing Attention" panel.
+            ->when($request->missing === 'image', fn ($q) =>
+                $q->whereDoesntHave('images', fn ($i) => $i->where('path', 'not like', '%placeholder-product%')))
+            ->when($request->missing === 'kg', fn ($q) => $q->whereNull('kg'))
+            ->when($request->missing === 'series', fn ($q) => $q->whereNull('series_id'))
+            ->when($request->missing === 'type', fn ($q) => $q->whereNull('product_type_id'))
+            ->when($request->missing === 'description', fn ($q) =>
+                $q->where(fn ($d) => $d->whereNull('description')
+                    ->orWhereRaw("JSON_EXTRACT(description, '$.tr') IS NULL")
+                    ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(description, '$.tr')) = ''")))
             ->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")
-            ->paginate(15)
-            ->withQueryString();
+            ->get();
 
-        $categories = Category::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get();
+        // Lookup lists for the dropdown filters. Only pull what's needed.
+        $categories    = Category::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get();
+        $subcategories = Subcategory::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get();
+        $productTypes  = ProductType::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get();
+        $series        = Series::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get();
+        $colors        = Color::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get();
 
-        return view('admin.products.index', compact('products', 'showTrashed', 'categories'));
+        return view('admin.products.index', compact(
+            'products', 'showTrashed',
+            'categories', 'subcategories', 'productTypes', 'series', 'colors'
+        ));
     }
 
     public function create(): View
@@ -64,8 +73,10 @@ class ProductController extends Controller
             $product = Product::create([
                 'category_id' => $data['category_id'] ?? null,
                 'subcategory_id' => $data['subcategory_id'] ?? null,
+                'product_type_id' => $data['product_type_id'] ?? null,
                 'series_id' => $data['series_id'] ?? null,
                 'sku' => $data['sku'] ?? null,
+                'sku_new' => $data['sku_new'] ?? null,
                 'slug' => $data['slug'],
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
@@ -103,8 +114,10 @@ class ProductController extends Controller
             $product->update([
                 'category_id' => $data['category_id'] ?? null,
                 'subcategory_id' => $data['subcategory_id'] ?? null,
+                'product_type_id' => $data['product_type_id'] ?? null,
                 'series_id' => $data['series_id'] ?? null,
                 'sku' => $data['sku'] ?? null,
+                'sku_new' => $data['sku_new'] ?? null,
                 'slug' => $data['slug'],
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
@@ -163,6 +176,7 @@ class ProductController extends Controller
         return [
             'categories' => Category::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get(),
             'subcategories' => Subcategory::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get(),
+            'productTypes' => ProductType::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get(),
             'seriesList' => Series::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get(),
             'colors' => Color::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get(),
             'measures' => Measure::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get(),

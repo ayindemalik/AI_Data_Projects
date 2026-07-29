@@ -12,8 +12,10 @@
 
                 <h5 class="mb-3">Basic Information</h5>
 
+                {{-- Category > Subcategory > Product Type cascade, same order as the
+                     index filter bar. Four columns, so col-md-3 each. --}}
                 <div class="row">
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-3 mb-3">
                         <label class="form-label">Category</label>
                         <select name="category_id" id="category_id" class="form-select">
                             <option value="">-- None --</option>
@@ -23,7 +25,7 @@
                         </select>
                     </div>
 
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-3 mb-3">
                         <label class="form-label">Subcategory</label>
                         <select name="subcategory_id" id="subcategory_id" class="form-select">
                             <option value="">-- None --</option>
@@ -34,7 +36,18 @@
                         </select>
                     </div>
 
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Product Type</label>
+                        <select name="product_type_id" id="product_type_id" class="form-select">
+                            <option value="">-- None --</option>
+                            @foreach ($productTypes as $pt)
+                                <option value="{{ $pt->id }}" data-subcategory="{{ $pt->subcategory_id }}"
+                                        @selected(old('product_type_id') == $pt->id)>{{ $pt->name['tr'] ?? '' }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="col-md-3 mb-3">
                         <label class="form-label">Series</label>
                         <select name="series_id" class="form-select">
                             <option value="">-- None --</option>
@@ -69,13 +82,18 @@
 
                 <div class="row">
                     <div class="col-md-4 mb-3">
+                        <label class="form-label">Slug</label>
+                        <input type="text" name="slug" value="{{ old('slug') }}" class="form-control" placeholder="e.g. ibiza-lavabo-91x51" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">SKU / Main Code</label>
                         <input type="text" name="sku" value="{{ old('sku') }}" class="form-control" placeholder="e.g. HC00106PB00">
                     </div>
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">Slug</label>
-                        <input type="text" name="slug" value="{{ old('slug') }}" class="form-control" placeholder="e.g. ibiza-lavabo-91x51" required>
+                        <label class="form-label">New Code (2026 catalog)</label>
+                        <input type="text" name="sku_new" value="{{ old('sku_new') }}" class="form-control" placeholder="e.g. HC00106PB00">
                     </div>
+
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Dimensions (display text)</label>
                         <input type="text" name="dimensions" value="{{ old('dimensions') }}" class="form-control" placeholder="e.g. 91x51 cm">
@@ -157,10 +175,15 @@
     </template>
 
     <script>
-        // Filter the Subcategory dropdown by the selected Category.
+        // Cascade: Category narrows Subcategory, Subcategory narrows Product Type.
+        // Every declaration stays above the initial filterSubcategories() call —
+        // that call reaches filterProductTypes(), which would hit the temporal
+        // dead zone if these consts were declared further down.
         const categorySelect = document.getElementById('category_id');
         const subcategorySelect = document.getElementById('subcategory_id');
+        const productTypeSelect = document.getElementById('product_type_id');
         const allSubcategoryOptions = Array.from(subcategorySelect.options);
+        const allProductTypeOptions = Array.from(productTypeSelect.options);
 
         function filterSubcategories() {
             const selectedCategory = categorySelect.value;
@@ -171,9 +194,25 @@
                     subcategorySelect.appendChild(opt.cloneNode(true));
                 }
             });
+            // Rebuilding this list can drop the current selection, so the child
+            // list has to be rebuilt from whatever survived.
+            filterProductTypes();
         }
+
+        function filterProductTypes() {
+            const selectedSubcategory = subcategorySelect.value;
+            productTypeSelect.innerHTML = '';
+            productTypeSelect.appendChild(allProductTypeOptions[0].cloneNode(true)); // "-- None --"
+            allProductTypeOptions.forEach(function (opt) {
+                if (opt.dataset.subcategory === selectedSubcategory) {
+                    productTypeSelect.appendChild(opt.cloneNode(true));
+                }
+            });
+        }
+
         categorySelect.addEventListener('change', filterSubcategories);
-        filterSubcategories();
+        subcategorySelect.addEventListener('change', filterProductTypes);
+        filterSubcategories(); // cascades into filterProductTypes()
 
         // Add/remove variant rows.
         const variantContainer = document.getElementById('variant-rows');

@@ -68,8 +68,8 @@ class DatabaseKnowledgeSource implements KnowledgeSourceInterface
             $parts[] = $labels['colors'] . ': ' . $p->colors->map(fn ($c) => $t($c->name))->implode(', ');
         }
 
-        if ($includeProCodes && $p->sku) {
-            $parts[] = 'SKU: ' . $p->sku;
+        if ($includeProCodes && ($p->sku || $p->sku_new)) {
+            $parts[] = 'SKU: ' . trim(($p->sku ?? '') . ($p->sku_new ? ' / ' . $p->sku_new : ''), ' /');
         }
 
         return '- ' . implode(' | ', array_filter($parts));
@@ -121,6 +121,9 @@ class DatabaseKnowledgeSource implements KnowledgeSourceInterface
         if ($includeProCodes) {
             if ($p->sku) {
                 $lines[] = $labels['sku'] . ': ' . $p->sku;
+            }
+            if ($p->sku_new) {
+                $lines[] = ($locale === 'en' ? 'New Product Code (2026)' : 'Yeni Ürün Kodu (2026)') . ': ' . $p->sku_new;
             }
             if ($p->variants->isNotEmpty()) {
                 $lines[] = $labels['variants'] . ': ' . $p->variants->map(function ($v) use ($t) {

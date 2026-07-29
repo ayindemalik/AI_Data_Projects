@@ -26,6 +26,12 @@ return [
         'permission' => 'manage-subcategories',
     ],
     [
+        'label' => 'Product Types',
+        'route' => 'admin.product-types.index',
+        'icon' => 'bi-tags',
+        'permission' => 'manage-product-types',
+    ],
+    [
         'label' => 'Collections',
         'route' => 'admin.collections.index',
         'icon' => 'bi-collection',

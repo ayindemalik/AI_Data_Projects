@@ -82,16 +82,18 @@ class ProductSearchService
     public function findByCode(string $code): ?Product
     {
         $code = trim($code);
+        $with = ['category', 'subcategory', 'series', 'colors', 'measures', 'variants', 'documents'];
 
-        $product = Product::with(['category', 'subcategory', 'series', 'colors', 'measures', 'variants', 'documents'])
+        $product = Product::with($with)
             ->where('sku', $code)
+            ->orWhere('sku_new', $code)
             ->first();
 
         if ($product) {
             return $product;
         }
 
-        return Product::with(['category', 'subcategory', 'series', 'colors', 'measures', 'variants', 'documents'])
+        return Product::with($with)
             ->whereHas('variants', fn ($q) => $q->where('variant_sku', $code))
             ->first();
     }
@@ -155,7 +157,7 @@ class ProductSearchService
     private function score(Product $product, array $terms): int
     {
         $haystacks = [
-            8 => $this->normalize((string) $product->sku),
+            8 => $this->normalize((string) $product->sku . ' ' . (string) $product->sku_new),
             6 => $this->normalize(($product->name['tr'] ?? '') . ' ' . ($product->name['en'] ?? '')),
             4 => $this->normalize(
                 ($product->series?->name['tr'] ?? '') . ' ' . ($product->series?->name['en'] ?? '')

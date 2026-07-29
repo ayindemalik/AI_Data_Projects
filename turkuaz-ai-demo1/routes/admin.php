@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\DocumentCategoryController;
 use App\Http\Controllers\Admin\DocumentController;
 use App\Http\Controllers\Admin\MeasureController;
 use App\Http\Controllers\Admin\ProductController;
+use App\Http\Controllers\Admin\ProductTypeController;
 use App\Http\Controllers\Admin\SeriesController;
 use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\SubcategoryController;
@@ -35,6 +36,7 @@ Route::middleware(['auth', 'verified', 'role:administrator'])
 
         foreach (['categories' => CategoryController::class,
                   'subcategories' => SubcategoryController::class,
+                  'product-types' => ProductTypeController::class,
                   'collections' => CollectionController::class,
                   'series' => SeriesController::class,
                   'colors' => ColorController::class,

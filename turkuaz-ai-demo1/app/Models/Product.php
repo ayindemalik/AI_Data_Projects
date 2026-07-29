@@ -14,13 +14,16 @@ class Product extends Model
     use SoftDeletes, HasTranslations;
 
     protected $fillable = [
-        'category_id', 'subcategory_id', 'series_id',
-        'sku', 'slug', 'name', 'description', 'dimensions', 'status',
+        'category_id', 'subcategory_id', 'product_type_id', 'series_id', 'color_id',
+        'sku', 'sku_new', 'kg', 'palet_adeti', 'catalog_synced_at',
+        'slug', 'name', 'description', 'dimensions', 'status',
     ];
 
     protected $casts = [
         'name' => 'array',
         'description' => 'array',
+        'kg' => 'decimal:2',
+        'catalog_synced_at' => 'datetime',
     ];
 
     public function category(): BelongsTo
@@ -33,11 +36,35 @@ class Product extends Model
         return $this->belongsTo(Subcategory::class);
     }
 
+    /**
+     * Third catalog level: Category > Subcategory > Product Type.
+     * product_type_id is a plain column (no DB-level FK), matching the
+     * legacy-import pattern used by the other lookups.
+     */
+    public function productType(): BelongsTo
+    {
+        return $this->belongsTo(ProductType::class);
+    }
+
     public function series(): BelongsTo
     {
         return $this->belongsTo(Series::class);
     }
 
+    /**
+     * Default / primary colour. color_id is a plain column (no DB-level FK,
+     * matching the legacy-import pattern) but this relation lets code and
+     * views resolve the colour conveniently.
+     */
+    public function color(): BelongsTo
+    {
+        return $this->belongsTo(Color::class);
+    }
+
+    /**
+     * All colours a product is offered in (many-to-many). The default colour
+     * (color_id) is also mirrored here so existing colour-based UI keeps working.
+     */
     public function colors(): BelongsToMany
     {
         return $this->belongsToMany(Color::class, 'product_colors');
@@ -58,11 +85,6 @@ class Product extends Model
         return $this->hasMany(ProductImage::class)->orderBy('sort_order');
     }
 
-    /**
-     * Technical documents attached to this product (datasheets, 2D/3D
-     * drawings, installation guides, etc). Added in the Documents module;
-     * this reverse relation was missing until the assistant needed it.
-     */
     public function documents(): HasMany
     {
         return $this->hasMany(Document::class);

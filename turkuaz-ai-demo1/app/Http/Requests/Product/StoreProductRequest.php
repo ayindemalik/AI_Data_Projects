@@ -16,9 +16,11 @@ class StoreProductRequest extends FormRequest
         return [
             'category_id' => ['nullable', 'exists:categories,id'],
             'subcategory_id' => ['nullable', 'exists:subcategories,id'],
+            'product_type_id' => ['nullable', 'exists:product_types,id'],
             'series_id' => ['nullable', 'exists:series,id'],
 
             'sku' => ['nullable', 'string', 'max:190', 'unique:products,sku'],
+            'sku_new' => ['nullable', 'string', 'max:190'],
             'slug' => ['required', 'string', 'max:255', 'unique:products,slug', 'alpha_dash'],
             'name.tr' => ['required', 'string', 'max:255'],
             'name.en' => ['required', 'string', 'max:255'],
