@@ -14,6 +14,7 @@ class RolePermissionSeeder extends Seeder
         'manage-products'      => 'Can create, edit, and delete products',
         'manage-categories'    => 'Can create, edit, and delete categories',
         'manage-subcategories' => 'Can create, edit, and delete subcategories',
+        'manage-product-types' => 'Can create, edit, and delete product types',
         'manage-series'        => 'Can create, edit, and delete series',
         'manage-collections'   => 'Can create, edit, and delete collections',
         'manage-colors'        => 'Can create, edit, and delete colors',

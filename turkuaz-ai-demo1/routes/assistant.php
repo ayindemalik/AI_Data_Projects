@@ -12,3 +12,9 @@ Route::get('/assistant', [AssistantController::class, 'index'])->name('assistant
 Route::post('/assistant/send', [ChatController::class, 'send'])
     ->middleware('throttle:20,1')
     ->name('assistant.send');
+
+// "Was this helpful?" on a single answer. Cheap (no OpenAI call), so the
+// limit is looser than /send — but still capped, since it writes to the DB.
+Route::post('/assistant/feedback', [ChatController::class, 'feedback'])
+    ->middleware('throttle:60,1')
+    ->name('assistant.feedback');

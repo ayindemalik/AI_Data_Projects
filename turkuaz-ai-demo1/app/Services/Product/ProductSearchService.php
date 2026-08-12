@@ -99,20 +99,33 @@ class ProductSearchService
     }
 
     /**
-     * Find the first model whose (normalized) TR or EN name appears in the
-     * query. Longest names are checked first so "gömme rezervuar" beats a
-     * hypothetical shorter partial match. Synonyms extend matching for
-     * common phrasings ("tuvalet" -> Klozet).
+     * Find the model whose (normalized) TR or EN name appears in the query as
+     * WHOLE WORDS. Synonyms extend matching for common phrasings
+     * ("tuvalet" -> Klozet).
+     *
+     * Whole words matter: a plain substring test matches the series "Arda"
+     * inside "lavabolarda" and "Arya" inside "bataryalar", which silently
+     * answers a question about one series with products from another.
+     *
+     * Multi-word names ("gömme rezervuar") must appear as a consecutive run of
+     * words. Names with more words win over shorter ones, and exact word
+     * matches win over suffixed ones, so the most specific reading is taken.
      */
     private function detectByName(Collection $models, string $normalizedQuery, array $synonyms = []): ?int
     {
+        $queryWords = $this->words($normalizedQuery);
+
+        if ($queryWords === []) {
+            return null;
+        }
+
         $candidates = [];
 
         foreach ($models as $model) {
             foreach (['tr', 'en'] as $lang) {
                 $name = $this->normalize($model->name[$lang] ?? '');
                 if ($name !== '' && mb_strlen($name) >= 3) {
-                    $candidates[] = ['needle' => $name, 'id' => $model->id];
+                    $candidates[] = ['words' => $this->words($name), 'id' => $model->id];
                 }
             }
         }
@@ -122,19 +135,83 @@ class ProductSearchService
                 return $this->normalize($m->name['tr'] ?? '') === $this->normalize($canonicalName);
             });
             if ($match) {
-                $candidates[] = ['needle' => $this->normalize($needle), 'id' => $match->id];
+                $candidates[] = ['words' => $this->words($this->normalize($needle)), 'id' => $match->id];
             }
         }
 
-        usort($candidates, fn ($a, $b) => mb_strlen($b['needle']) <=> mb_strlen($a['needle']));
+        $candidates = array_values(array_filter($candidates, fn ($c) => $c['words'] !== []));
 
-        foreach ($candidates as $candidate) {
-            if (str_contains($normalizedQuery, $candidate['needle'])) {
-                return $candidate['id'];
+        usort($candidates, function ($a, $b) {
+            return [count($b['words']), mb_strlen(implode($b['words']))]
+                <=> [count($a['words']), mb_strlen(implode($a['words']))];
+        });
+
+        // Exact word matches first, then allow Turkish suffixes ("Aqua" in
+        // "aquada"). Two passes rather than one so a suffixed match can never
+        // beat an exact one that appears later in the list.
+        foreach ([true, false] as $exactOnly) {
+            foreach ($candidates as $candidate) {
+                if ($this->containsWordRun($queryWords, $candidate['words'], $exactOnly)) {
+                    return $candidate['id'];
+                }
             }
         }
 
         return null;
+    }
+
+    /**
+     * True when $needle appears in $haystack as a run of consecutive words.
+     */
+    private function containsWordRun(array $haystack, array $needle, bool $exactOnly): bool
+    {
+        $limit = count($haystack) - count($needle);
+
+        for ($offset = 0; $offset <= $limit; $offset++) {
+            $matched = true;
+
+            foreach ($needle as $i => $word) {
+                if (!$this->wordMatches($haystack[$offset + $i], $word, $exactOnly)) {
+                    $matched = false;
+                    break;
+                }
+            }
+
+            if ($matched) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Turkish attaches case/plural endings to the end of a word, so a real
+     * match is always a PREFIX: "lavabolarda" starts with "lavabo", and
+     * "aquada" starts with "aqua" — while "lavabolarda" does not start with
+     * "arda". The suffix is capped so a short name can't swallow a longer
+     * unrelated word.
+     */
+    private function wordMatches(string $queryWord, string $nameWord, bool $exactOnly): bool
+    {
+        if ($queryWord === $nameWord) {
+            return true;
+        }
+
+        if ($exactOnly) {
+            return false;
+        }
+
+        return str_starts_with($queryWord, $nameWord)
+            && mb_strlen($queryWord) - mb_strlen($nameWord) <= 5;
+    }
+
+    /**
+     * Split already-normalized text into comparable words.
+     */
+    private function words(string $normalized): array
+    {
+        return preg_split('/[^a-z0-9]+/', $normalized, -1, PREG_SPLIT_NO_EMPTY) ?: [];
     }
 
     /**

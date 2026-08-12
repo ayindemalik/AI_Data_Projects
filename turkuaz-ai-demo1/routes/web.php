@@ -21,6 +21,10 @@ Route::middleware('auth')->group(function () {
 
 require __DIR__.'/auth.php'; 
 
-require_once __DIR__.'/admin.php';
+// require, not require_once: web.php is re-evaluated for every application
+// instance, and require_once would register these routes only for the first
+// instance in the process — leaving later ones (e.g. every test after the
+// first) with no admin or assistant routes at all.
+require __DIR__.'/admin.php';
 
-require_once __DIR__.'/assistant.php';
+require __DIR__.'/assistant.php';

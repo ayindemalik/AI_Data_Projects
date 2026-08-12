@@ -14,6 +14,18 @@ return [
         'permission' => 'manage-products',
     ],
     [
+        'label' => 'Assign Images',
+        'route' => 'admin.product-images.index',
+        'icon' => 'bi-images',
+        'permission' => 'manage-products',
+    ],
+    [
+        'label' => 'Image Paths',
+        'route' => 'admin.product-image-paths.index',
+        'icon' => 'bi-link-45deg',
+        'permission' => 'manage-products',
+    ],
+    [
         'label' => 'Categories',
         'route' => 'admin.categories.index',
         'icon' => 'bi-diagram-3',

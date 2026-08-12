@@ -30,7 +30,27 @@
                         @if ($message->matched_product_ids)
                             · products: {{ implode(', ', $message->matched_product_ids) }}
                         @endif
+                        @if ($message->rating === 1)
+                            · <span class="badge bg-success">👍 helpful</span>
+                        @elseif ($message->rating === -1)
+                            · <span class="badge bg-danger">👎 not helpful</span>
+                            {{-- An answer the model produced from real product data is a prompt
+                                 problem worth acting on; a fallback or price-rule reply is not. --}}
+                            @if ($message->isGeneratedAnswer())
+                                <span class="badge bg-secondary">prompt issue</span>
+                            @elseif ($message->source === 'openai')
+                                <span class="badge bg-warning text-dark">no products matched — retrieval issue</span>
+                            @else
+                                <span class="badge bg-light text-dark">{{ $message->source }} reply — not a prompt issue</span>
+                            @endif
+                        @endif
                     </div>
+
+                    @if ($message->feedback_note)
+                        <div class="alert alert-warning py-2 px-3 mt-1 mb-0 small d-inline-block text-start" style="max-width: 75%;">
+                            <strong>User note:</strong> {{ $message->feedback_note }}
+                        </div>
+                    @endif
                 </div>
             @endforeach
         </div>

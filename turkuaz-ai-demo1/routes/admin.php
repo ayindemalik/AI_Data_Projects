@@ -9,6 +9,8 @@ use App\Http\Controllers\Admin\DocumentCategoryController;
 use App\Http\Controllers\Admin\DocumentController;
 use App\Http\Controllers\Admin\MeasureController;
 use App\Http\Controllers\Admin\ProductController;
+use App\Http\Controllers\Admin\ProductImageController;
+use App\Http\Controllers\Admin\ProductImagePathController;
 use App\Http\Controllers\Admin\ProductTypeController;
 use App\Http\Controllers\Admin\SeriesController;
 use App\Http\Controllers\Admin\SettingController;
@@ -33,6 +35,16 @@ Route::middleware(['auth', 'verified', 'role:administrator'])
         Route::resource('products', ProductController::class)->except('show');
         Route::post('products/{id}/restore', [ProductController::class, 'restore'])->name('products.restore')->whereNumber('id');
         Route::delete('products/{id}/force-delete', [ProductController::class, 'forceDelete'])->name('products.force-delete')->whereNumber('id');
+
+        Route::get('product-images', [ProductImageController::class, 'index'])->name('product-images.index');
+        Route::put('product-images/assign', [ProductImageController::class, 'assign'])->name('product-images.assign');
+
+        Route::get('product-image-paths', [ProductImagePathController::class, 'index'])->name('product-image-paths.index');
+        Route::post('product-image-paths', [ProductImagePathController::class, 'store'])->name('product-image-paths.store');
+        Route::put('product-image-paths/{productImage}', [ProductImagePathController::class, 'update'])
+            ->name('product-image-paths.update')->whereNumber('productImage');
+        Route::delete('product-image-paths/{productImage}', [ProductImagePathController::class, 'destroy'])
+            ->name('product-image-paths.destroy')->whereNumber('productImage');
 
         foreach (['categories' => CategoryController::class,
                   'subcategories' => SubcategoryController::class,

@@ -26,6 +26,14 @@ class SettingController extends Controller
             'label' => 'AI Assistant Enabled',
             'type' => 'boolean',
         ],
+        'assistant_memory_enabled' => [
+            'label' => 'Conversation Memory (assistant remembers the last few turns — improves follow-up questions, costs more tokens per message)',
+            'type' => 'boolean',
+        ],
+        'assistant_feedback_enabled' => [
+            'label' => 'Answer Feedback (show "was this helpful?" under each answer)',
+            'type' => 'boolean',
+        ],
         'dealer_contact_note' => [
             'label' => 'Dealer Contact Note (shown to customers instead of pricing)',
             'type' => 'text',

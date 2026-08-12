@@ -26,15 +26,41 @@ class DatabaseKnowledgeSource implements KnowledgeSourceInterface
         }
 
         $result = $this->search->searchWithIntent($query, 10);
-        $products = $result['products'];
 
+        return $this->serializeMany($result['products'], $includeProCodes, $locale);
+    }
+
+    /**
+     * Builds context from a known set of product ids instead of a search.
+     * Used for follow-up questions, where the products under discussion come
+     * from the previous answer rather than from the words of the new question.
+     */
+    public function retrieveByIds(array $ids, bool $includeProCodes, string $locale): array
+    {
+        if ($ids === []) {
+            return ['context' => '', 'product_ids' => []];
+        }
+
+        // Eager-loaded because serializeFull/Compact walk every one of these
+        // relations — without this a follow-up would fire dozens of queries.
+        $products = Product::with([
+            'category', 'subcategory', 'series', 'colors', 'measures', 'documents', 'variants',
+        ])->whereIn('id', $ids)->get();
+
+        return $this->serializeMany($products, $includeProCodes, $locale);
+    }
+
+    /**
+     * 1-2 matches: full spec sheets. More: compact one-line-per-product
+     * listing — enough for the model to present a clean list without
+     * drowning it (and the token budget) in per-product detail.
+     */
+    private function serializeMany($products, bool $includeProCodes, string $locale): array
+    {
         if ($products->isEmpty()) {
             return ['context' => '', 'product_ids' => []];
         }
 
-        // 1-2 matches: full spec sheets. More: compact one-line-per-product
-        // listing — enough for the model to present a clean list without
-        // drowning it (and the token budget) in per-product detail.
         $context = $products->count() <= 2
             ? $products->map(fn (Product $p) => $this->serializeFull($p, $includeProCodes, $locale))->implode("\n---\n")
             : $products->map(fn (Product $p) => $this->serializeCompact($p, $includeProCodes, $locale))->implode("\n");
@@ -47,7 +73,11 @@ class DatabaseKnowledgeSource implements KnowledgeSourceInterface
 
     /**
      * One line per product, for list answers.
-     * e.g. "- İbiza Lavabo 61x51 | Lavabo | 61x51 cm | Renkler: Beyaz | SKU: 050100-u"
+     * e.g. "- İbiza Lavabo 61x51 | Seri: İbiza | Lavabo | 61x51 cm | Renkler: Beyaz"
+     *
+     * The series is included even though it costs tokens: without it the model
+     * receives an unlabelled list and will present whatever it was given under
+     * whatever series the question happened to name.
      */
     private function serializeCompact(Product $p, bool $includeProCodes, string $locale): string
     {
@@ -55,6 +85,10 @@ class DatabaseKnowledgeSource implements KnowledgeSourceInterface
         $labels = $this->labels($locale);
 
         $parts = [$t($p->name)];
+
+        if ($p->series) {
+            $parts[] = $labels['series'] . ': ' . $t($p->series->name);
+        }
 
         if ($p->subcategory) {
             $parts[] = $t($p->subcategory->name);

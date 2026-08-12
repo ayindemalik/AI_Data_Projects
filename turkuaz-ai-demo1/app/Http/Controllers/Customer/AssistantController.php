@@ -12,6 +12,7 @@ class AssistantController extends Controller
     {
         return view('customer.assistant', [
             'assistantEnabled' => (bool) Setting::get('assistant_enabled', true),
+            'feedbackEnabled' => (bool) Setting::get('assistant_feedback_enabled', true),
         ]);
     }
 }

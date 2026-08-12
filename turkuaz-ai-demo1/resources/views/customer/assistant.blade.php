@@ -17,6 +17,11 @@
         .product-card-mini { width: 150px; }
         .product-card-mini img { height: 90px; object-fit: cover; }
         .typing { font-style: italic; color: #6c757d; }
+        .feedback-bar { margin: -.3rem 0 .8rem; font-size: .8rem; color: #6c757d; }
+        .feedback-bar button { border: 0; background: none; padding: 0 .25rem; cursor: pointer; line-height: 1; }
+        .feedback-bar button:hover { transform: scale(1.15); }
+        .feedback-bar button.chosen { transform: scale(1.2); }
+        .feedback-note { max-width: 80%; }
     </style>
 </head>
 <body>
@@ -94,6 +99,94 @@
             chatBox.scrollTop = chatBox.scrollHeight;
         }
 
+        // Admin toggle (Settings -> Answer Feedback). The /send response repeats
+        // it, so switching it off takes effect without a page reload.
+        let feedbackEnabled = @json($feedbackEnabled ?? true);
+
+        function sendFeedback(messageId, rating, note) {
+            return fetch('{{ route('assistant.feedback') }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    message_id: messageId,
+                    session_token: sessionToken,
+                    rating: rating,
+                    note: note || null,
+                }),
+            }).catch(() => null);   // Feedback must never break the chat itself.
+        }
+
+        function addFeedbackBar(messageId) {
+            const bar = document.createElement('div');
+            bar.className = 'feedback-bar';
+
+            const label = document.createElement('span');
+            label.textContent = 'Bu yanıt yardımcı oldu mu? ';
+
+            const up = document.createElement('button');
+            up.type = 'button';
+            up.textContent = '👍';
+            up.title = 'Evet';
+
+            const down = document.createElement('button');
+            down.type = 'button';
+            down.textContent = '👎';
+            down.title = 'Hayır';
+
+            bar.append(label, up, down);
+            chatBox.appendChild(bar);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            function thanks() {
+                bar.textContent = 'Geri bildiriminiz için teşekkürler.';
+            }
+
+            up.addEventListener('click', function () {
+                up.disabled = down.disabled = true;
+                sendFeedback(messageId, 1, null);
+                thanks();
+            });
+
+            down.addEventListener('click', function () {
+                up.disabled = down.disabled = true;
+
+                // Record the down-vote immediately, so the signal survives even
+                // if the user never fills in the note below.
+                sendFeedback(messageId, -1, null);
+
+                const wrap = document.createElement('div');
+                wrap.className = 'feedback-note mb-3';
+
+                const box = document.createElement('textarea');
+                box.className = 'form-control form-control-sm mb-1';
+                box.rows = 2;
+                box.maxLength = 1000;
+                box.placeholder = 'Yanıtın nesi eksikti? (isteğe bağlı)';
+
+                const send = document.createElement('button');
+                send.type = 'button';
+                send.className = 'btn btn-sm btn-outline-secondary';
+                send.textContent = 'Gönder';
+
+                wrap.append(box, send);
+                chatBox.appendChild(wrap);
+                chatBox.scrollTop = chatBox.scrollHeight;
+                box.focus();
+
+                send.addEventListener('click', function () {
+                    send.disabled = true;
+                    // Same message, now with the note — the endpoint overwrites.
+                    sendFeedback(messageId, -1, box.value.trim());
+                    wrap.remove();
+                    thanks();
+                });
+            });
+        }
+
         form?.addEventListener('submit', async function (e) {
             e.preventDefault();
             const message = input.value.trim();
@@ -130,6 +223,14 @@
 
                 addBubble(data.reply, 'assistant');
                 addProducts(data.products);
+
+                if (typeof data.feedback_enabled === 'boolean') {
+                    feedbackEnabled = data.feedback_enabled;
+                }
+
+                if (feedbackEnabled && data.message_id) {
+                    addFeedbackBar(data.message_id);
+                }
             } catch (err) {
                 typing.remove();
                 addBubble('Bağlantı hatası. Lütfen tekrar deneyin.', 'assistant');

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ChatMessage;
 use App\Models\ChatSession;
 use App\Models\Product;
 use App\Models\Setting;
@@ -69,9 +70,52 @@ class ChatController extends Controller
 
         return response()->json([
             'session_token' => $session->token,
+            'message_id' => $result['message_id'],
             'reply' => $result['reply'],
             'source' => $result['source'],
             'products' => $products,
+            'feedback_enabled' => (bool) Setting::get('assistant_feedback_enabled', true),
         ]);
+    }
+
+    /**
+     * Record "was this helpful?" on one assistant answer.
+     *
+     * The rating is accepted only for an assistant message that belongs to the
+     * session whose token the browser holds. Without that ownership check,
+     * anyone could rate arbitrary messages by guessing ids — and confirm which
+     * ids exist from the response code.
+     */
+    public function feedback(Request $request): JsonResponse
+    {
+        if (!Setting::get('assistant_feedback_enabled', true)) {
+            return response()->json(['ok' => false, 'error' => 'disabled'], 403);
+        }
+
+        $data = $request->validate([
+            'message_id' => ['required', 'integer'],
+            'session_token' => ['required', 'uuid'],
+            'rating' => ['required', 'integer', 'in:1,-1'],
+            'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $message = ChatMessage::where('id', $data['message_id'])
+            ->where('role', 'assistant')
+            ->whereHas('session', fn ($query) => $query->where('token', $data['session_token']))
+            ->first();
+
+        if (!$message) {
+            return response()->json(['ok' => false], 404);
+        }
+
+        // Re-rating an answer overwrites the previous rating rather than
+        // stacking, so one answer always carries one verdict.
+        $message->update([
+            'rating' => $data['rating'],
+            'feedback_note' => $data['note'] ?? null,
+            'rated_at' => now(),
+        ]);
+
+        return response()->json(['ok' => true]);
     }
 }
