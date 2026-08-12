@@ -8,6 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable('chat_messages')) {
         Schema::create('chat_messages', function (Blueprint $table) {
             $table->id();
             $table->foreignId('chat_session_id')->constrained()->cascadeOnDelete();
@@ -16,7 +17,7 @@ return new class extends Migration
             $table->json('matched_product_ids')->nullable();  // Traceability: which products informed this answer
             $table->string('source', 30)->nullable();         // db | openai | rule (price/showroom shortcuts)
             $table->timestamps();
-        });
+        });}
     }
 
     public function down(): void

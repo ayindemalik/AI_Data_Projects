@@ -1,27 +1,29 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     /**
-     * Run the migrations.
+     * SUPERSEDED — intentionally does nothing.
+     *
+     * Phase 1 scaffolded an empty placeholder `product_variants` (id + timestamps).
+     * Phase 7 defined the real table in
+     * 2026_07_16_105106_create_product_variants_table.php.
+     *
+     * Left as a no-op rather than deleted: this migration is already recorded
+     * in the `migrations` table of running installs, so removing the file would
+     * make those installs inconsistent. Emptying it instead means a FRESH
+     * database no longer creates the placeholder that made the Phase 7
+     * migration fail with "table product_variants already exists".
      */
     public function up(): void
     {
-        Schema::create('product_variants', function (Blueprint $table) {
-            $table->id();
-            $table->timestamps();
-        });
+        //
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::dropIfExists('product_variants');
+        // The table is owned by the Phase 7 migration, which drops it.
     }
 };

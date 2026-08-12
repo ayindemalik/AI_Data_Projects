@@ -14,7 +14,7 @@
 /.zed
 /auth.json
 /node_modules
-/public/build
+# /public/build
 /public/fonts-manifest.dev.json
 /public/hot
 /public/storage
@@ -25,40 +25,64 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
-production_dump.sql 
-turkuaz6_data.sql
-phase1_scaffold.sh
-phase2_setup.sh
-phase3_setup.sh
-phase4_setup.sh
-phase5_setup.sh
-phase6_setup.sh
-phase7_setup.sh
-phase8_setup.sh
-phase9_setup.sh
-phase10_setup.sh
-phase9_setup.sh
+/dev_phases
+phase11/
 
-phase2_bundle.tar.gz
-phase3_bundle.tar.gz
-phase4_bundle.tar.gz
-phase5_bundle.tar.gz
-phase6_bundle.tar.gz
-phase7_bundle.tar.gz
-phase8_bundle.tar.gz
-phase9_bundle.tar.gz
-phase10_bundle.tar.gz
-phase2_bundle.tar.gz
+# production_dump.sql 
+# turkuaz6_data.sql
+# phase1_scaffold.sh
+# phase2_setup.sh
+# phase3_setup.sh
+# phase4_setup.sh
+# phase5_setup.sh
+# phase6_setup.sh
+# phase7_setup.sh
+# phase8_setup.sh
+# phase9_setup.sh
+# phase10_setup.sh
+# phase9_setup.sh
 
-/phase1
-/phase2
-/phase2_bundle.tar
-/phase3
-/phase4
-/phase5
-/phase6
-/phase7
-/phase8
-/phase9 
-/phase10
-/phase10fix
+# phase2_bundle.tar.gz
+# phase3_bundle.tar.gz
+# phase4_bundle.tar.gz
+# phase5_bundle.tar.gz
+# phase6_bundle.tar.gz
+# phase7_bundle.tar.gz
+# phase8_bundle.tar.gz
+# phase9_bundle.tar.gz
+# phase10_bundle.tar.gz
+# phase2_bundle.tar.gz
+
+# /phase1
+# /phase2
+# /phase2_bundle.tar
+# /phase3
+# /phase4
+# /phase5
+# /phase6
+# /phase7
+# /phase8
+# /phase9 
+# /phase10
+# /phase10fix
+
+../GithubToken
+       
+INSTALL.md
+PRODUCT_TYPE_FORM.md
+PROJECT_GUIDE.md
+Turkauz_Seramik-Fiyat_Listesi-2026-1-RV01.pdf
+media_restore_bundle.tar.gz
+media_restore_setup.sh
+rebuild_pkg/
+view-chat-history,
+# views/
+data/
+database/migrations/
+docs/
+phase11_bundle.tar.gz
+phase11_setup.sh
+product_types_bundle.tar.gz
+products_datatable_bundle.tar.gz
+products_datatable_v2_bundle.tar.gz
+turkuaz_2026_catalog_extract.xlsx

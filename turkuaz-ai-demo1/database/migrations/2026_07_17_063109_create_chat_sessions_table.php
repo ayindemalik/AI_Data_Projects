@@ -8,6 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable('chat_sessions')) {
         Schema::create('chat_sessions', function (Blueprint $table) {
             $table->id();
             $table->uuid('token')->unique();                    // Identifies the session for guests (no login required)
@@ -17,6 +18,7 @@ return new class extends Migration
 
             $table->index('user_id');
         });
+        }
     }
 
     public function down(): void
