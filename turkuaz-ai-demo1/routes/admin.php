@@ -43,6 +43,8 @@ Route::middleware(['auth', 'verified', 'role:administrator'])
         Route::post('product-image-paths', [ProductImagePathController::class, 'store'])->name('product-image-paths.store');
         Route::put('product-image-paths/{productImage}', [ProductImagePathController::class, 'update'])
             ->name('product-image-paths.update')->whereNumber('productImage');
+        Route::put('product-image-paths/{productImage}/cover', [ProductImagePathController::class, 'cover'])
+            ->name('product-image-paths.cover')->whereNumber('productImage');
         Route::delete('product-image-paths/{productImage}', [ProductImagePathController::class, 'destroy'])
             ->name('product-image-paths.destroy')->whereNumber('productImage');
 
