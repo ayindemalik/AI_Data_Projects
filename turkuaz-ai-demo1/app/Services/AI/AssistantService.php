@@ -27,7 +27,12 @@ class AssistantService
             $session->update(['locale' => $locale]);
         }
 
-        $includeProCodes = $user?->hasPermission('view-product-codes') ?? false;
+        // Product codes are public: they show on every card and spec sheet, so
+        // the assistant must be free to say them too — otherwise it refuses to
+        // repeat a code the page beside it is already displaying.
+        // Restore the line below to put codes back behind 'view-product-codes'.
+        // $includeProCodes = $user?->hasPermission('view-product-codes') ?? false;
+        $includeProCodes = true;
 
         // Read the conversation so far BEFORE storing the new question, so the
         // current message isn't repeated inside the history block below.
@@ -152,7 +157,7 @@ class AssistantService
         $lang = $locale === 'en' ? 'English' : 'Turkish';
 
         $rules = [
-            "You are Cera, the product assistant for CeraStyle / Turkuaz Seramik, a ceramic bathroom products manufacturer.",
+            "You are Cera, the product assistant for Turkuaz Seramik / CeraStyle, a ceramic bathroom products manufacturer.",
             "ALWAYS answer in {$lang} — the language of the user's question. Never mix languages.",
             "Answer ONLY from the PRODUCT DATA provided from the database. Never invent products, features, or documents. If the data doesn't contain the answer, say so briefly and suggest contacting the company.",
             "Answer ONLY what was asked. If the user asks about a specific product type (e.g. washbasins), do not list other product types even if they appear in the data.",
@@ -164,7 +169,7 @@ class AssistantService
         ];
 
         $rules[] = $includeProCodes
-            ? "The user is a verified professional (dealer/sales); you may share product codes (SKU) and variant codes when asked."
+            ? "Product codes (SKU) and variant codes are public catalog data; share them when asked, and quote them exactly as they appear in the PRODUCT DATA."
             : "NEVER mention internal product codes or SKUs, even if asked directly; those are only for authorized dealers.";
 
         return implode("\n", $rules);

@@ -54,7 +54,8 @@ class ChatController extends Controller
 
         $result = $assistant->reply($session, $data['message'], $user);
 
-        // Small product cards for the UI, from the matched ids.
+        // Small product cards for the UI, from the matched ids. The 2026 code is
+        // public catalog data, shown to everyone — same as the spec sheet.
         $products = Product::with(['images', 'series'])
             ->whereIn('id', $result['product_ids'] ?: [-1])
             ->get()
@@ -65,6 +66,8 @@ class ChatController extends Controller
                     'series' => $p->series?->translate('name'),
                     'dimensions' => $p->dimensions,
                     'image' => $p->images->first()?->url,
+                    'code' => $p->sku_new,
+                    'url' => route('products.show', $p->slug),
                 ];
             });
 

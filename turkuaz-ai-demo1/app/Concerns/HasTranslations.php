@@ -30,9 +30,12 @@ trait HasTranslations
             return $query;
         }
 
+        // Lowercased on both sides: MySQL collates JSON extractions
+        // utf8mb4_bin, so a plain LIKE here only matched the exact casing the
+        // operator happened to type. See App\Support\JsonText.
         return $query->where(function ($q) use ($term) {
-            $q->whereRaw("JSON_EXTRACT(name, '$.tr') LIKE ?", ["%{$term}%"])
-              ->orWhereRaw("JSON_EXTRACT(name, '$.en') LIKE ?", ["%{$term}%"]);
+            $q->whereRaw(\App\Support\JsonText::lower('name', 'tr').' LIKE LOWER(?)', ["%{$term}%"])
+              ->orWhereRaw(\App\Support\JsonText::lower('name', 'en').' LIKE LOWER(?)', ["%{$term}%"]);
         });
     }
 

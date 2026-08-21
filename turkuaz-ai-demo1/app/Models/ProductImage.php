@@ -12,7 +12,13 @@ class ProductImage extends Model
 {
     use HasTranslations;
 
-    protected $fillable = ['product_id', 'path', 'alt_text', 'sort_order'];
+    /** product_image: the one picture that represents a product code. */
+    public const MAIN = 'main';
+
+    /** product_image: every other picture of that code. */
+    public const RELATED = 'related';
+
+    protected $fillable = ['product_id', 'path', 'product_image', 'alt_text', 'sort_order'];
 
     protected $casts = [
         'alt_text' => 'array',

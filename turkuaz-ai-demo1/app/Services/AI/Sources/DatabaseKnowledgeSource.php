@@ -44,7 +44,7 @@ class DatabaseKnowledgeSource implements KnowledgeSourceInterface
         // Eager-loaded because serializeFull/Compact walk every one of these
         // relations — without this a follow-up would fire dozens of queries.
         $products = Product::with([
-            'category', 'subcategory', 'series', 'colors', 'measures', 'documents', 'variants',
+            'category', 'subcategory', 'series', 'color', 'measures', 'documents', 'variants',
         ])->whereIn('id', $ids)->get();
 
         return $this->serializeMany($products, $includeProCodes, $locale);
@@ -98,8 +98,8 @@ class DatabaseKnowledgeSource implements KnowledgeSourceInterface
             $parts[] = $p->dimensions;
         }
 
-        if ($p->colors->isNotEmpty()) {
-            $parts[] = $labels['colors'] . ': ' . $p->colors->map(fn ($c) => $t($c->name))->implode(', ');
+        if ($p->color) {
+            $parts[] = $labels['colors'] . ': ' . $t($p->color->name);
         }
 
         if ($includeProCodes && ($p->sku || $p->sku_new)) {
@@ -138,8 +138,8 @@ class DatabaseKnowledgeSource implements KnowledgeSourceInterface
             $lines[] = $t($measure->name) . ': ' . rtrim(rtrim((string) $measure->pivot->value, '0'), '.') . ' ' . $measure->unit;
         }
 
-        if ($p->colors->isNotEmpty()) {
-            $lines[] = $labels['colors'] . ': ' . $p->colors->map(fn ($c) => $t($c->name))->implode(', ');
+        if ($p->color) {
+            $lines[] = $labels['colors'] . ': ' . $t($p->color->name);
         }
 
         if ($desc = $t($p->description)) {

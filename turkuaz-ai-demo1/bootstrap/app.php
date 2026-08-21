@@ -22,7 +22,14 @@ return Application::configure(basePath: dirname(__DIR__))
         // live under /assistant rather than /api, so errors there must come
         // back as JSON too — otherwise a validation failure returns a redirect
         // and the chat's res.json() call chokes on HTML.
+        //
+        // expectsJson() is repeated here on purpose: this callback REPLACES
+        // Laravel's default test rather than adding to it, and dropping it
+        // broke every other fetch endpoint in the admin panel — the Image
+        // Paths table showed "Network error" for what was really a 422.
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*') || $request->is('assistant/*'),
+            fn (Request $request) => $request->is('api/*')
+                || $request->is('assistant/*')
+                || $request->expectsJson(),
         );
     })->create();

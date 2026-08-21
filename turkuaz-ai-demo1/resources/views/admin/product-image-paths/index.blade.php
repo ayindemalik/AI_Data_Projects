@@ -9,6 +9,9 @@
             <p class="text-muted mb-0 small">
                 One row per <code>product_images</code> record. Edit any field on a line and press
                 <strong>Save</strong> (or Enter) to write the whole line back — no page reload.
+                <strong>Cover</strong> saves on its own the moment you change it: picking
+                <em>Main / cover</em> sets every other image with the same New Code back to
+                <em>Related</em>.
             </p>
         </div>
         <a href="{{ route('admin.product-images.index') }}" class="btn btn-sm btn-outline-secondary">
@@ -20,6 +23,16 @@
     <div class="card mb-3">
         <div class="card-body">
             <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1">Series</label>
+                    <select id="filter-series" class="form-select form-select-sm">
+                        <option value="">All Series</option>
+                        @foreach ($series as $s)
+                            <option value="{{ $s->name['tr'] ?? '' }}">{{ $s->name['tr'] ?? '' }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
                 <div class="col-md-3">
                     <label class="form-label small text-muted mb-1">Category</label>
                     <select id="filter-category" class="form-select form-select-sm">
@@ -47,17 +60,21 @@
                         @endforeach
                     </select>
                 </div>
+
+                
+                
+            </div>
+            <div class="row g-2 mt-1">
                 <div class="col-md-3">
-                    <label class="form-label small text-muted mb-1">Series</label>
-                    <select id="filter-series" class="form-select form-select-sm">
-                        <option value="">All Series</option>
-                        @foreach ($series as $s)
-                            <option value="{{ $s->name['tr'] ?? '' }}">{{ $s->name['tr'] ?? '' }}</option>
+                    <label class="form-label small text-muted mb-1">Product Color</label>
+                    <select id="filter-color" class="form-select form-select-sm">
+                        <option value="">All Colors</option>
+                        @foreach ($colors as $c)
+                            <option value="{{ $c->name['tr'] ?? '' }}" data-subcategory-id="{{ $c->id }}">{{ $c->name['tr'] ?? '' }}</option>
                         @endforeach
                     </select>
                 </div>
-            </div>
-            <div class="row g-2 mt-1">
+
                 <div class="col-md-3">
                     <label class="form-label small text-muted mb-1">Image status</label>
                     <select id="filter-status" class="form-select form-select-sm">
@@ -80,17 +97,20 @@
                 <thead>
                     <tr>
                         <th>ID</th>
-                        <th style="min-width:130px;">SKU</th>
-                        <th style="min-width:150px;">New Code</th>
-                        <th style="min-width:220px;">Name</th>
-                        <th style="min-width:150px;">Series</th>
-                        <th style="min-width:150px;">Category</th>
-                        <th style="min-width:150px;">Subcategory</th>
-                        <th style="min-width:150px;">Product Type</th>
-                        <th class="no-sort">Preview</th>
+                        <th style="min-width:115px;">SKU</th>
+                        <th style="min-width:180px;">New Code</th>
+                        <th style="min-width:380px;">Name</th>
+                        <th style="min-width:130px;">Series</th>
+                        <th style="min-width:200px;">Category</th>
+                        <th style="min-width:200px;">Subcategory</th>
+                        <th style="min-width:200px;">Product Type</th>
+                        <th style="min-width:120px;">Color</th>
+                        <th style="min-width:100px;" class="no-sort">Preview</th>
+                        <th style="min-width:150px;">Cover</th>
                         <th style="min-width:300px;">Image Path</th>
-                        <th class="no-sort text-end" style="min-width:150px;">Actions</th>
-                        <th>Status</th>{{-- hidden, drives the status filter --}}
+                        <th style="min-width:100px;" class="no-sort text-end" style="min-width:120px;">Actions</th>
+                        <th style="min-width:100px;">Status</th>
+                        {{-- hidden, drives the status filter --}}
                     </tr>
                 </thead>
                 <tbody>
@@ -102,6 +122,7 @@
                             $isPlaceholder = $image && str_contains($path, 'placeholder-product');
                             $status = !$image ? 'none' : ($isPlaceholder ? 'placeholder' : 'real');
                             $nameTr = $product->name['tr'] ?? '';
+                            $isCover = $image && $image->product_image === \App\Models\ProductImage::MAIN;
 
                             // Each select ships with its current option only; the rest
                             // arrive from TAXONOMY on first focus.
@@ -110,6 +131,7 @@
                                 'category_id' => [$product->category_id, $product->category?->name['tr'] ?? ''],
                                 'subcategory_id' => [$product->subcategory_id, $product->subcategory?->name['tr'] ?? ''],
                                 'product_type_id' => [$product->productType?->id, $product->productType?->name['tr'] ?? ''],
+                                'color_id' => [$product->color_id, $product->color?->name['tr'] ?? ''],
                             ];
                         @endphp
 {{-- Deliberately flush left: this block is emitted 727 times, and normal Blade
@@ -123,9 +145,12 @@
 <td data-search="{{ $product->sku_new }}" data-order="{{ $product->sku_new }}"><input type="text" class="form-control form-control-sm js-field" data-field="sku_new" value="{{ $product->sku_new }}"></td>
 <td data-search="{{ $nameTr }}" data-order="{{ $nameTr }}"><input type="text" class="form-control form-control-sm js-field" data-field="name_tr" value="{{ $nameTr }}"></td>
 @foreach ($taxCells as $field => [$id, $label])
-<td data-search="{{ $label }}" data-order="{{ $label }}"><select class="form-select form-select-sm js-field js-tax" data-field="{{ $field }}"><option value="">—</option>@if ($id)<option value="{{ $id }}" selected>{{ $label }}</option>@endif</select></td>
+<td data-search="{{ $label }}" data-order="{{ $label }}"><select class="form-select form-select-sm js-field js-tax" 
+    data-field="{{ $field }}">
+    <option value="">—</option>@if ($id)<option value="{{ $id }}" selected>{{ $label }}</option>@endif</select></td>
 @endforeach
 <td class="preview-cell">@if ($image)<img src="{{ $image->url }}" alt="" loading="lazy" class="js-preview thumb">@else<img src="" alt="" hidden class="js-preview thumb"><span class="text-muted small js-no-image">—</span>@endif</td>
+<td class="cover-cell" data-search="{{ $image ? ($isCover ? 'main' : 'related') : 'none' }}" data-order="{{ $image ? ($isCover ? 0 : 1) : 2 }}">@if ($image)<select class="form-select form-select-sm js-cover"><option value="main" @selected($isCover)>★ Main / cover</option><option value="related" @selected(!$isCover)>Related</option></select>@else<span class="text-muted small">—</span>@endif</td>
 <td data-search="{{ $path }}" data-order="{{ $path }}"><input type="text" class="form-control form-control-sm font-monospace js-field js-path" data-field="path" value="{{ $path }}" placeholder="https://… or products/12/photo.jpg"><div class="small mt-1 js-feedback">@if ($image)<span class="text-muted">product_images #{{ $image->id }}</span>@else<span class="text-warning-emphasis">no image row yet — saving creates one</span>@endif</div></td>
 <td class="text-end text-nowrap"><div class="btn-group btn-group-sm"><button type="button" class="btn btn-outline-secondary js-view" title="View image" @disabled(!$image)><i class="bi bi-eye"></i></button><button type="button" class="btn btn-outline-primary js-save" title="Save this line" disabled>Save</button><button type="button" class="btn btn-outline-danger js-delete" title="Delete this image row" @disabled(!$image)><i class="bi bi-trash"></i></button></div></td>
 <td>{{ $status }}</td>
@@ -172,8 +197,16 @@
         #paths-table td .form-control-sm, #paths-table td .form-select-sm { font-size: .8rem; }
         #paths-table td.preview-cell { width: 64px; }
         #paths-table img.thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; }
+        #paths-table td.cover-cell { width: 140px; }
+        /* Makes the one cover per code findable at a glance while scrolling. */
+        #paths-table .js-cover:has(option[value="main"]:checked) {
+            background-color: #fff3cd; border-color: #ffda6a; font-weight: 600;
+        }
     </style>
 @endpush
+
+
+
 
 @push('scripts')
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -184,8 +217,8 @@
             // Column index map — keep in sync with <thead> above.
             const COL = {
                 sku: 1, skuNew: 2, name: 3,
-                series: 4, category: 5, subcategory: 6, productType: 7,
-                path: 9, status: 11,
+                series: 4, category: 5, subcategory: 6, productType: 7, color: 8,
+                cover: 10, path: 11, status: 13,
             };
 
             // Which column shows which editable field, for post-save resync.
@@ -193,6 +226,7 @@
                 sku: COL.sku, sku_new: COL.skuNew, name_tr: COL.name,
                 series_id: COL.series, category_id: COL.category,
                 subcategory_id: COL.subcategory, product_type_id: COL.productType,
+                color_id: COL.color,
                 path: COL.path,
             };
 
@@ -204,6 +238,11 @@
             // before DataTables init, while every row is still in the document.
             document.querySelectorAll('#paths-table .js-field')
                 .forEach(el => { el.dataset.original = el.value; });
+
+            // The cover select is not part of the line — it writes on its own —
+            // so it tracks its last saved value separately, to roll back to.
+            document.querySelectorAll('#paths-table .js-cover')
+                .forEach(el => { el.dataset.current = el.value; });
 
             const table = new DataTable('#paths-table', {
                 columnDefs: [
@@ -224,6 +263,8 @@
             const elCat = document.getElementById('filter-category');
             const elSub = document.getElementById('filter-subcategory');
             const elType = document.getElementById('filter-product-type');
+            const elColor = document.getElementById('filter-color');
+
 
             function columnSearch(colIndex, val) {
                 if (val === '') table.column(colIndex).search('');
@@ -271,12 +312,15 @@
             document.getElementById('filter-series').addEventListener('change', function () {
                 columnSearch(COL.series, this.value); table.draw();
             });
+            elColor.addEventListener('change', function () {
+                columnSearch(COL.color, this.value); table.draw();
+            });
             document.getElementById('filter-status').addEventListener('change', function () {
                 columnSearch(COL.status, this.value); table.draw();
             });
 
             document.getElementById('clear-filters').addEventListener('click', function () {
-                [elCat, elSub, elType,
+                [elCat, elSub, elType, elColor,
                  document.getElementById('filter-series'),
                  document.getElementById('filter-status')].forEach(el => { el.value = ''; });
                 refreshSubcategoryOptions();
@@ -355,6 +399,47 @@
                 cell.invalidate('dom');
             }
 
+            // --- Cover / related ---------------------------------------------
+            function coverSelect(role) {
+                return '<select class="form-select form-select-sm js-cover">'
+                    + '<option value="main"' + (role === 'main' ? ' selected' : '') + '>★ Main / cover</option>'
+                    + '<option value="related"' + (role === 'main' ? '' : ' selected') + '>Related</option>'
+                    + '</select>';
+            }
+
+            // Sorts covers to the top, so data-order is 0/1 rather than the text.
+            function setCover(row, role) {
+                const cell = table.cell(row, COL.cover);
+                const node = cell.node();
+                if (!node) return;
+
+                let select = node.querySelector('.js-cover');
+                if (!select) {
+                    // The line had no image row until now, so the cell held a dash.
+                    node.innerHTML = coverSelect(role);
+                    select = node.querySelector('.js-cover');
+                }
+
+                select.value = role;
+                select.dataset.current = role;
+                node.dataset.search = role;
+                node.dataset.order = role === 'main' ? '0' : '1';
+                cell.invalidate('dom');
+            }
+
+            // One sweep for the whole set, however many ids came back.
+            function rowsWithImageIds(ids) {
+                const wanted = new Set((ids || []).map(String));
+                const found = [];
+                if (wanted.size === 0) return found;
+
+                table.rows().nodes().each(function (node) {
+                    if (wanted.has(node.dataset.imageId)) found.push(node);
+                });
+
+                return found;
+            }
+
             function applyPayload(row, data) {
                 const p = data.product;
 
@@ -377,7 +462,10 @@
                 [['series_id', p.series_id, p.series],
                  ['category_id', p.category_id, p.category],
                  ['subcategory_id', p.subcategory_id, p.subcategory],
-                 ['product_type_id', p.product_type_id, p.product_type]].forEach(([field, id, label]) => {
+                 ['product_type_id', p.product_type_id, p.product_type],
+                 ['color_id', p.color_id, p.color]
+                
+                ].forEach(([field, id, label]) => {
                     const el = row.querySelector(`[data-field="${field}"]`);
                     if (!el) return;
                     const value = id ? String(id) : '';
@@ -396,8 +484,12 @@
                 syncCell(row, COL.category, p.category);
                 syncCell(row, COL.subcategory, p.subcategory);
                 syncCell(row, COL.productType, p.product_type);
+                syncCell(row, COL.color, p.color);
                 syncCell(row, COL.path, data.path);
                 table.cell(row, COL.status).data(data.is_placeholder ? 'placeholder' : 'real');
+
+                // store() can hand the code its first cover, so trust the server.
+                if (data.product_image) setCover(row, data.product_image);
 
                 const preview = row.querySelector('.js-preview');
                 preview.src = data.url;
@@ -427,6 +519,8 @@
                         path: node.querySelector('.js-path').value,
                         url: node.querySelector('.js-preview').src,
                         is_placeholder: table.cell(node, COL.status).data() === 'placeholder',
+                        // Only product fields cascade; each line keeps its own cover.
+                        product_image: node.querySelector('.js-cover')?.value,
                         product: p,
                     });
                     node.classList.remove('is-saved');
@@ -437,6 +531,7 @@
             const csrf = document.querySelector('meta[name="csrf-token"]').content;
             const rowUrl = @json(route('admin.product-image-paths.update', ['productImage' => '__ID__']));
             const storeUrl = @json(route('admin.product-image-paths.store'));
+            const coverUrl = @json(route('admin.product-image-paths.cover', ['productImage' => '__ID__']));
             const tableEl = document.getElementById('paths-table');
 
             function lineBody(row) {
@@ -494,6 +589,47 @@
                 }
             }
 
+            /**
+             * The cover dropdown writes immediately — there is nothing else on
+             * the line to batch it with, and leaving a half-applied "one cover
+             * per code" rule sitting in the page would be worse than a reload.
+             */
+            async function saveCover(select) {
+                const row = select.closest('tr');
+                const imageId = row.dataset.imageId;
+                const role = select.value;
+                const previous = select.dataset.current;
+
+                if (!imageId || role === previous) return;
+
+                select.disabled = true;
+                feedback(row, 'Saving cover…', 'text-muted');
+
+                try {
+                    const { ok, data } = await request(
+                        coverUrl.replace('__ID__', imageId), 'PUT', { product_image: role }
+                    );
+
+                    if (!ok) {
+                        select.value = previous;
+                        feedback(row, errorText(data), 'text-danger');
+                        return;
+                    }
+
+                    setCover(row, data.product_image);
+
+                    // Promoting this one pushed the code's other images down.
+                    rowsWithImageIds(data.demoted).forEach(node => setCover(node, 'related'));
+
+                    feedback(row, data.message, 'text-success');
+                } catch (error) {
+                    select.value = previous;
+                    feedback(row, 'Network error — the cover was not changed.', 'text-danger');
+                } finally {
+                    select.disabled = false;
+                }
+            }
+
             async function remove(row) {
                 const imageId = row.dataset.imageId;
                 if (!imageId) return;
@@ -524,12 +660,19 @@
                         row.querySelector('.js-preview').src = data.replacement.url;
                         syncCell(row, COL.path, data.replacement.path);
                         table.cell(row, COL.status).data('placeholder');
+                        setCover(row, data.replacement.product_image);
                         row.classList.remove('is-dirty', 'is-saved');
                         row.querySelector('.js-save').disabled = true;
                         feedback(row, `${data.message} Now product_images #${data.replacement.id}`, 'text-warning-emphasis');
                     } else {
                         // The product still has other photos, so drop the line.
                         table.row(row).remove().draw(false);
+                    }
+
+                    // Deleting the cover hands the job to another of the code's
+                    // images; show that on whichever line now holds it.
+                    if (data.promoted && data.promoted !== data.replacement?.id) {
+                        rowsWithImageIds([data.promoted]).forEach(node => setCover(node, 'main'));
                     }
                 } catch (error) {
                     feedback(row, 'Network error — nothing was deleted.', 'text-danger');
@@ -570,6 +713,12 @@
 
             tableEl.addEventListener('change', function (event) {
                 const el = event.target;
+
+                if (el.classList.contains('js-cover')) {
+                    saveCover(el);
+                    return;
+                }
+
                 if (!el.classList.contains('js-field')) return;
 
                 const row = el.closest('tr');

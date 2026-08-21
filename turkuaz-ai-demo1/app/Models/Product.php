@@ -80,9 +80,15 @@ class Product extends Model
         return $this->hasMany(ProductVariant::class);
     }
 
+    /**
+     * Cover picture first, so ->images->first() is the one the operator picked
+     * on the Image Paths screen; the rest keep their manual sort order.
+     */
     public function images(): HasMany
     {
-        return $this->hasMany(ProductImage::class)->orderBy('sort_order');
+        return $this->hasMany(ProductImage::class)
+            ->orderByRaw("CASE WHEN product_image = '".ProductImage::MAIN."' THEN 0 ELSE 1 END")
+            ->orderBy('sort_order');
     }
 
     public function documents(): HasMany

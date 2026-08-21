@@ -9,8 +9,11 @@ use App\Models\ProductImage;
 use App\Models\ProductType;
 use App\Models\Series;
 use App\Models\Subcategory;
+use App\Models\Color;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -43,7 +46,7 @@ class ProductImagePathController extends Controller
         $this->authorize('viewAny', Product::class);
 
         $products = Product::query()
-            ->with(['images', 'category', 'subcategory', 'productType', 'series'])
+            ->with(['images', 'category', 'subcategory', 'productType', 'series', 'color'])
             ->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")
             ->get();
 
@@ -63,6 +66,7 @@ class ProductImagePathController extends Controller
         $subcategories = Subcategory::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get();
         $productTypes = ProductType::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get();
         $series = Series::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get();
+        $colors = Color::active()->orderByRaw("JSON_EXTRACT(name, '$.tr') asc")->get();
 
         return view('admin.product-image-paths.index', [
             'rows' => $rows,
@@ -70,6 +74,7 @@ class ProductImagePathController extends Controller
             'subcategories' => $subcategories,
             'productTypes' => $productTypes,
             'series' => $series,
+            'colors' => $colors,
             // Same lists again as flat arrays. The row selects ship with only
             // their current option and pull the rest from here on first focus —
             // 727 rows x 104 options is far too much markup to render up front.
@@ -85,6 +90,9 @@ class ProductImagePathController extends Controller
                 ])->values(),
                 'series_id' => $series->map(fn ($s) => [
                     'id' => $s->id, 'name' => $s->name['tr'] ?? '', 'parent' => null,
+                ])->values(),
+                 'color_id' => $colors->map(fn ($c) => [
+                    'id' => $c->id, 'name' => $c->name['tr'] ?? '', 'parent' => null,
                 ])->values(),
             ],
         ]);
@@ -149,6 +157,9 @@ class ProductImagePathController extends Controller
             $image = ProductImage::create([
                 'product_id' => $product->id,
                 'path' => $path,
+                // New rows are related by default; the code only takes this one
+                // as its cover when nothing else is holding that spot.
+                'product_image' => ProductImage::RELATED,
                 'sort_order' => 0,
             ]);
 
@@ -160,10 +171,60 @@ class ProductImagePathController extends Controller
                     ->delete();
             }
 
-            return $image;
+            $this->ensureCover($product->sku_new, $product->id);
+
+            return $image->refresh();
         });
 
         return response()->json($this->payload($image, $product->refresh(), 'Image row created.'), 201);
+    }
+
+    /**
+     * Flip one image row between cover and related, on its own.
+     *
+     * Promoting a row demotes every other image sharing its product code
+     * (products.sku_new), so a code always resolves to exactly one cover — that
+     * grouping, rather than product_id, because one code can span several
+     * product rows (colour and size variants) yet still wants one cover photo.
+     */
+    public function cover(Request $request, ProductImage $productImage): JsonResponse
+    {
+        $this->authorize('update', Product::class);
+
+        $data = $request->validate([
+            'product_image' => ['required', 'string', 'in:'.ProductImage::MAIN.','.ProductImage::RELATED],
+        ]);
+
+        $role = $data['product_image'];
+
+        $demoted = DB::transaction(function () use ($productImage, $role) {
+            $productImage->update(['product_image' => $role]);
+
+            if ($role !== ProductImage::MAIN) {
+                return collect();
+            }
+
+            $siblings = $this->siblingIds($productImage);
+
+            if ($siblings->isNotEmpty()) {
+                ProductImage::whereIn('id', $siblings)->update(['product_image' => ProductImage::RELATED]);
+            }
+
+            return $siblings;
+        });
+
+        return response()->json([
+            'id' => $productImage->id,
+            'product_image' => $role,
+            // The table demotes these rows in place instead of reloading.
+            'demoted' => $demoted->values(),
+            'message' => $role === ProductImage::MAIN
+                ? 'Set as cover.'.($demoted->isNotEmpty()
+                    ? ' '.$demoted->count().' other image'.($demoted->count() === 1 ? '' : 's')
+                        .' for this code set to related.'
+                    : '')
+                : 'Set as related.',
+        ]);
     }
 
     /**
@@ -180,21 +241,27 @@ class ProductImagePathController extends Controller
         $deletedId = $productImage->id;
         $productId = $productImage->product_id;
         $path = $productImage->path;
+        $code = $productImage->product?->sku_new;
 
-        [$fileDeleted, $replacement] = DB::transaction(function () use ($productImage, $productId, $path) {
+        [$fileDeleted, $replacement, $promoted] = DB::transaction(function () use ($productImage, $productId, $path, $code) {
             $productImage->delete();
 
             $fileDeleted = $this->deleteFileIfOrphaned($path);
 
-            if (ProductImage::where('product_id', $productId)->exists()) {
-                return [$fileDeleted, null];
-            }
+            $replacement = ProductImage::where('product_id', $productId)->exists()
+                ? null
+                : ProductImage::create([
+                    'product_id' => $productId,
+                    'path' => self::PLACEHOLDER,
+                    'product_image' => ProductImage::RELATED,
+                    'sort_order' => 0,
+                ]);
 
-            return [$fileDeleted, ProductImage::create([
-                'product_id' => $productId,
-                'path' => self::PLACEHOLDER,
-                'sort_order' => 0,
-            ])];
+            // Deleting the cover would otherwise leave the code with none. This
+            // can promote the placeholder just created, so re-read it after.
+            $promoted = $this->ensureCover($code, $productId);
+
+            return [$fileDeleted, $replacement?->refresh(), $promoted];
         });
 
         $message = 'Image row deleted.';
@@ -205,6 +272,9 @@ class ProductImagePathController extends Controller
         if ($replacement) {
             $message .= ' That was the product\'s last image, so the placeholder is back.';
         }
+        if ($promoted && $promoted->id !== $replacement?->id) {
+            $message .= ' That was the cover, so image #'.$promoted->id.' took over.';
+        }
 
         return response()->json([
             'deleted_id' => $deletedId,
@@ -214,9 +284,53 @@ class ProductImagePathController extends Controller
                 'path' => $replacement->path,
                 'url' => $replacement->url,
                 'is_placeholder' => true,
+                'product_image' => $replacement->fresh()->product_image,
             ] : null,
+            // The table flips this row's dropdown to "cover" without a reload.
+            'promoted' => $promoted?->id,
             'message' => $message,
         ]);
+    }
+
+    /** Every other image row filed under the same product code. */
+    private function siblingIds(ProductImage $productImage): Collection
+    {
+        return $this->codeGroup($productImage->product?->sku_new, $productImage->product_id)
+            ->whereKeyNot($productImage->id)
+            ->pluck('id');
+    }
+
+    /**
+     * All image rows sharing one product code.
+     *
+     * A blank code cannot group anything — matching on it would sweep in every
+     * uncoded product — so those rows fall back to their own product.
+     */
+    private function codeGroup(?string $code, ?int $productId): Builder
+    {
+        $code = $this->nullIfBlank($code);
+
+        return $code === null
+            ? ProductImage::query()->where('product_id', $productId)
+            : ProductImage::query()->whereIn('product_id', Product::where('sku_new', $code)->select('id'));
+    }
+
+    /**
+     * Leave the code group with a cover, promoting its oldest row when the one
+     * it had was just deleted, or when it never had one (a brand-new product's
+     * first photo). Returns the row promoted, if any.
+     */
+    private function ensureCover(?string $code, ?int $productId): ?ProductImage
+    {
+        if ($this->codeGroup($code, $productId)->where('product_image', ProductImage::MAIN)->exists()) {
+            return null;
+        }
+
+        $candidate = $this->codeGroup($code, $productId)->orderBy('id')->first();
+
+        $candidate?->update(['product_image' => ProductImage::MAIN]);
+
+        return $candidate;
     }
 
     private function validateLine(Request $request, Product $product, bool $withProductId): array
@@ -232,6 +346,7 @@ class ProductImagePathController extends Controller
             'subcategory_id' => ['nullable', 'integer', 'exists:subcategories,id'],
             'product_type_id' => ['nullable', 'integer', 'exists:product_types,id'],
             'series_id' => ['nullable', 'integer', 'exists:series,id'],
+            'color_id' => ['nullable', 'integer', 'exists:colors,id'],
         ], [
             'sku.unique' => 'Another product already uses that SKU.',
             'name_tr.required' => 'The product needs a name.',
@@ -255,6 +370,7 @@ class ProductImagePathController extends Controller
             'subcategory_id' => $data['subcategory_id'] ?? null,
             'product_type_id' => $data['product_type_id'] ?? null,
             'series_id' => $data['series_id'] ?? null,
+            'color_id' => $data['color_id'] ?? null,
         ]);
     }
 
@@ -298,13 +414,14 @@ class ProductImagePathController extends Controller
      */
     private function payload(ProductImage $image, Product $product, string $message): array
     {
-        $product->load(['category', 'subcategory', 'productType', 'series']);
+        $product->load(['category', 'subcategory', 'productType', 'series', 'color']);
 
         return [
             'id' => $image->id,
             'path' => $image->path,
             'url' => $image->url,
             'is_placeholder' => $this->isPlaceholder($image->path),
+            'product_image' => $image->product_image,
             'product' => [
                 'id' => $product->id,
                 'sku' => $product->sku,
@@ -314,10 +431,12 @@ class ProductImagePathController extends Controller
                 'subcategory_id' => $product->subcategory_id,
                 'product_type_id' => $product->product_type_id,
                 'series_id' => $product->series_id,
+                'color_id' => $product->color_id,
                 'category' => $product->category?->name['tr'] ?? '',
                 'subcategory' => $product->subcategory?->name['tr'] ?? '',
                 'product_type' => $product->productType?->name['tr'] ?? '',
                 'series' => $product->series?->name['tr'] ?? '',
+                'color' => $product->color?->name['tr'] ?? '',
             ],
             'message' => $message,
         ];

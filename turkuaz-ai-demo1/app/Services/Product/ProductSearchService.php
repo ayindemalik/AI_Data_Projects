@@ -3,9 +3,11 @@
 namespace App\Services\Product;
 
 use App\Models\Category;
+use App\Models\Color;
 use App\Models\Product;
 use App\Models\Series;
 use App\Models\Subcategory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 class ProductSearchService
@@ -17,11 +19,18 @@ class ProductSearchService
      *
      * "İbiza serisinde hangi lavabolar var?" -> series=İbiza AND subcategory=Lavabo
      * "gömme rezervuar"                      -> category=Gömme Rezervuar
+     * "60 cm mat siyah lavabo"               -> subcategory=Lavabo AND colour AND 60 cm
      * "91x51 tezgah üstü bir şey"            -> no structure -> keyword scoring
      *
-     * Returns ['products' => Collection, 'filtered' => bool] — 'filtered'
-     * tells the caller whether this is a precise catalog listing (safe to
-     * show as a list) or a fuzzy guess (best-effort matches).
+     * Colour and size narrow the listing but never kill it: asking for a 60 cm
+     * mat black basin when none exists should answer with mat black basins,
+     * not with fuzzy keyword guesses, so the filters are dropped one at a time
+     * (size first, then colour) until something comes back.
+     *
+     * Returns ['products' => Collection, 'filtered' => bool, 'applied' => array]
+     * — 'filtered' tells the caller whether this is a precise catalog listing
+     * (safe to show as a list) or a fuzzy guess, and 'applied' names the
+     * filters that actually survived, for diagnostics.
      */
     public function searchWithIntent(string $query, int $limit = 10): array
     {
@@ -30,25 +39,64 @@ class ProductSearchService
         $seriesId = $this->detectByName(Series::active()->get(), $normalizedQuery);
         $subcategoryId = $this->detectByName(Subcategory::active()->get(), $normalizedQuery, $this->subcategorySynonyms());
         $categoryId = $this->detectByName(Category::active()->get(), $normalizedQuery);
+        $colorIds = $this->detectColorIds($normalizedQuery);
+        $measure = $this->detectMeasure($normalizedQuery);
 
-        if ($seriesId || $subcategoryId || $categoryId) {
-            $products = Product::query()
-                ->with(['category', 'subcategory', 'series', 'colors', 'measures', 'variants', 'documents'])
-                ->active()
-                ->when($seriesId, fn ($q) => $q->where('series_id', $seriesId))
-                ->when($subcategoryId, fn ($q) => $q->where('subcategory_id', $subcategoryId))
-                // Only apply category when subcategory didn't already narrow it,
-                // to avoid over-restricting (subcategory implies its category).
-                ->when($categoryId && !$subcategoryId, fn ($q) => $q->where('category_id', $categoryId))
-                ->limit($limit)
-                ->get();
+        $taxonomy = $seriesId || $subcategoryId || $categoryId;
 
-            if ($products->isNotEmpty()) {
-                return ['products' => $products, 'filtered' => true];
+        if ($taxonomy || $colorIds || $measure) {
+            foreach ([[$colorIds, $measure], [$colorIds, null], [null, null]] as [$colors, $size]) {
+                // Never widen all the way to "no filter at all" — that is the
+                // whole catalogue in name order, not an answer to anything.
+                if (!$taxonomy && !$colors && !$size) {
+                    continue;
+                }
+
+                $products = $this->structured($seriesId, $subcategoryId, $categoryId, $colors, $size, $limit);
+
+                if ($products->isNotEmpty()) {
+                    return [
+                        'products' => $products,
+                        'filtered' => true,
+                        'applied' => array_filter([
+                            'series_id' => $seriesId,
+                            'subcategory_id' => $subcategoryId,
+                            'category_id' => $categoryId && !$subcategoryId ? $categoryId : null,
+                            'color_ids' => $colors,
+                            'measure' => $size,
+                        ]),
+                    ];
+                }
             }
         }
 
-        return ['products' => $this->search($query, 5), 'filtered' => false];
+        return ['products' => $this->search($query, 5), 'filtered' => false, 'applied' => []];
+    }
+
+    /**
+     * The precise listing query. Split out so searchWithIntent can run it
+     * more than once while it relaxes the optional filters.
+     */
+    private function structured(
+        ?int $seriesId,
+        ?int $subcategoryId,
+        ?int $categoryId,
+        ?array $colorIds,
+        ?array $measure,
+        int $limit
+    ): Collection {
+        return Product::query()
+            ->with(['category', 'subcategory', 'series', 'color', 'measures', 'variants', 'documents'])
+            ->active()
+            ->when($seriesId, fn ($q) => $q->where('series_id', $seriesId))
+            ->when($subcategoryId, fn ($q) => $q->where('subcategory_id', $subcategoryId))
+            // Only apply category when subcategory didn't already narrow it,
+            // to avoid over-restricting (subcategory implies its category).
+            ->when($categoryId && !$subcategoryId, fn ($q) => $q->where('category_id', $categoryId))
+            ->when($colorIds, fn ($q) => $q->whereIn('color_id', $colorIds))
+            ->when($measure, fn ($q) => $this->applyMeasure($q, $measure))
+            ->limit($limit)
+            ->get();
     }
 
     /**
@@ -63,7 +111,7 @@ class ProductSearchService
         }
 
         $products = Product::query()
-            ->with(['category', 'subcategory', 'series', 'colors', 'measures', 'variants', 'documents'])
+            ->with(['category', 'subcategory', 'series', 'color', 'measures', 'variants', 'documents'])
             ->active()
             ->get();
 
@@ -82,7 +130,7 @@ class ProductSearchService
     public function findByCode(string $code): ?Product
     {
         $code = trim($code);
-        $with = ['category', 'subcategory', 'series', 'colors', 'measures', 'variants', 'documents'];
+        $with = ['category', 'subcategory', 'series', 'color', 'measures', 'variants', 'documents'];
 
         $product = Product::with($with)
             ->where('sku', $code)
@@ -161,6 +209,110 @@ class ProductSearchService
     }
 
     /**
+     * Colours named in the query, as products.color_id values.
+     *
+     * Two passes, because colour names overlap. A full name wins outright
+     * ("mat siyah" -> Mat Siyah). Failing that, a single distinguishing word is
+     * spread over every colour carrying it, so "siyah lavabo" offers both Mat
+     * Siyah and Parlak Siyah rather than nothing — the shopper said black, not
+     * which finish.
+     *
+     * Colours nobody stocks are excluded first: the catalog carries a bare
+     * "Siyah" with zero products, and matching it would turn a good question
+     * into an empty listing.
+     *
+     * @return array<int>|null
+     */
+    private function detectColorIds(string $normalizedQuery): ?array
+    {
+        $stocked = Product::query()->whereNotNull('color_id')->distinct()->pluck('color_id');
+
+        if ($stocked->isEmpty()) {
+            return null;
+        }
+
+        $colors = Color::active()->whereIn('id', $stocked)->get();
+
+        if ($exact = $this->detectByName($colors, $normalizedQuery)) {
+            return [$exact];
+        }
+
+        $queryWords = $this->words($normalizedQuery);
+        $ids = [];
+
+        foreach ($colors as $color) {
+            foreach (['tr', 'en'] as $lang) {
+                foreach ($this->words($this->normalize($color->name[$lang] ?? '')) as $nameWord) {
+                    if (mb_strlen($nameWord) < 3) {
+                        continue;
+                    }
+
+                    foreach ($queryWords as $queryWord) {
+                        if ($this->wordMatches($queryWord, $nameWord, false)) {
+                            $ids[] = $color->id;
+                            continue 4;
+                        }
+                    }
+                }
+            }
+        }
+
+        return $ids === [] ? null : array_values(array_unique($ids));
+    }
+
+    /**
+     * A size named in the query.
+     *
+     * "55x42" is unambiguous on its own. A lone number is not — "60" could be a
+     * quantity or part of a code — so the unit is required for that form, which
+     * is also how customers actually write it ("60 cm lavabo").
+     *
+     * @return array{type:string, value:string}|null
+     */
+    private function detectMeasure(string $normalizedQuery): ?array
+    {
+        if (preg_match('/(\d{1,4})\s*x\s*(\d{1,4})/', $normalizedQuery, $m)) {
+            return ['type' => 'pair', 'value' => $m[1].'x'.$m[2]];
+        }
+
+        if (preg_match('/(?<![\dx])(\d{2,4})\s*cm\b/', $normalizedQuery, $m)) {
+            return ['type' => 'single', 'value' => $m[1]];
+        }
+
+        return null;
+    }
+
+    /**
+     * Match a size against products.dimensions ("60x45 cm", "48 cm"), falling
+     * back to the Turkish name because 163 catalog rows carry no dimensions at
+     * all and still name their size in the title.
+     *
+     * LIKE rather than a regex: the test suite runs on SQLite, which has no
+     * REGEXP operator.
+     */
+    private function applyMeasure(Builder $query, array $measure): Builder
+    {
+        $value = $measure['value'];
+
+        return $query->where(function (Builder $q) use ($measure, $value) {
+            if ($measure['type'] === 'pair') {
+                $q->where('dimensions', 'like', $value.'%')
+                  ->orWhere('name->tr', 'like', '%'.$value.'%');
+
+                return;
+            }
+
+            // A single measure is the first figure of a WxH product, the second
+            // of a HxW one, or the only figure the row carries.
+            $q->where('dimensions', 'like', $value.'x%')
+              ->orWhere('dimensions', 'like', '%x'.$value)
+              ->orWhere('dimensions', 'like', '%x'.$value.' %')
+              ->orWhere('dimensions', 'like', $value.' cm%')
+              ->orWhere('name->tr', 'like', '%'.$value.' cm%');
+        });
+    }
+
+    /**
      * True when $needle appears in $haystack as a run of consecutive words.
      */
     private function containsWordRun(array $haystack, array $needle, bool $exactOnly): bool
@@ -189,8 +341,14 @@ class ProductSearchService
      * Turkish attaches case/plural endings to the end of a word, so a real
      * match is always a PREFIX: "lavabolarda" starts with "lavabo", and
      * "aquada" starts with "aqua" — while "lavabolarda" does not start with
-     * "arda". The suffix is capped so a short name can't swallow a longer
-     * unrelated word.
+     * "arda".
+     *
+     * The leftover has to be an ACTUAL Turkish ending, not merely short.
+     * Allowing any short remainder made "önerir" — the most ordinary way to
+     * ask for a recommendation — match the series "One" and silently restrict
+     * every recommendation question to that one series. "onerir" minus "one"
+     * leaves "rir", which is not a suffix in Turkish; "ibizada" minus "ibiza"
+     * leaves "da", which is.
      */
     private function wordMatches(string $queryWord, string $nameWord, bool $exactOnly): bool
     {
@@ -198,12 +356,40 @@ class ProductSearchService
             return true;
         }
 
-        if ($exactOnly) {
+        if ($exactOnly || !str_starts_with($queryWord, $nameWord)) {
             return false;
         }
 
-        return str_starts_with($queryWord, $nameWord)
-            && mb_strlen($queryWord) - mb_strlen($nameWord) <= 5;
+        return in_array(mb_substr($queryWord, mb_strlen($nameWord)), $this->turkishSuffixes(), true);
+    }
+
+    /**
+     * Noun endings a catalog term can legitimately pick up, already normalized
+     * (ı->i, ü->u, ş->s ...) so they compare against normalize() output.
+     *
+     * Plural, case, possessive, and the common compounds of those. Extend
+     * freely — this is the ONLY place these live.
+     */
+    private function turkishSuffixes(): array
+    {
+        return [
+            // plural
+            'lar', 'ler',
+            // case
+            'a', 'e', 'i', 'u', 'ya', 'ye', 'yi', 'yu',
+            'da', 'de', 'ta', 'te', 'dan', 'den', 'tan', 'ten',
+            'nda', 'nde', 'ndan', 'nden', 'in', 'un', 'nin', 'nun',
+            // possessive
+            'si', 'su', 'sa', 'se', 'miz', 'niz',
+            // plural + case
+            'larda', 'lerde', 'lardan', 'lerden', 'lari', 'leri',
+            'larin', 'lerin', 'lara', 'lere', 'lari', 'leri',
+            // derivational endings that still name the same thing
+            'li', 'lu', 'lik', 'luk', 'siz', 'suz',
+            'daki', 'deki', 'taki', 'teki',
+            // "ile" contracted
+            'la', 'le', 'yla', 'yle',
+        ];
     }
 
     /**
@@ -244,7 +430,7 @@ class ProductSearchService
                 ($product->category?->name['tr'] ?? '') . ' ' . ($product->category?->name['en'] ?? '')
             ),
             2 => $this->normalize(
-                $product->colors->map(fn ($c) => ($c->name['tr'] ?? '') . ' ' . ($c->name['en'] ?? ''))->implode(' ') . ' ' .
+                ($product->color?->name['tr'] ?? '') . ' ' . ($product->color?->name['en'] ?? '') . ' ' .
                 (string) $product->dimensions
             ),
             1 => $this->normalize(
